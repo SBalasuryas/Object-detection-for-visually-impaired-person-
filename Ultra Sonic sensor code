@@ -1,0 +1,50 @@
+import RPi.GPIO as GPIO
+import time
+
+class UltrasonicHandler:
+    def __init__(self, trigger_pin, echo_pin):
+        self.trigger_pin = trigger_pin
+        self.echo_pin = echo_pin
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(self.trigger_pin, GPIO.OUT)
+        GPIO.setup(self.echo_pin, GPIO.IN)
+        GPIO.output(self.trigger_pin, False)
+        time.sleep(2)  # Allow sensor to settle
+
+    def get_distance(self):
+        # Send trigger pulse
+        GPIO.output(self.trigger_pin, True)
+        time.sleep(0.00001)
+        GPIO.output(self.trigger_pin, False)
+
+        # Wait for echo response
+        pulse_start, pulse_end = 0, 0
+        while GPIO.input(self.echo_pin) == 0:
+            pulse_start = time.time()
+        while GPIO.input(self.echo_pin) == 1:
+            pulse_end = time.time()
+
+        pulse_duration = pulse_end - pulse_start
+        distance = (pulse_duration * 34300) / 2  # Convert time to distance in cm
+        return round(distance, 2)
+
+    def cleanup(self):
+        GPIO.cleanup()
+
+# To import this module in another file:
+# from ultrasonic_handler import UltrasonicHandler
+# sensor = UltrasonicHandler(trigger_pin=23, echo_pin=24)
+# distance = sensor.get_distance()
+# print(f"Measured Distance: {distance} cm")
+# sensor.cleanup()
+
+# Example usage
+if __name__ == "__main__":
+    sensor = UltrasonicHandler(trigger_pin=20, echo_pin=21)
+    try:
+        while True:
+            distance = sensor.get_distance()
+            print(f"Distance: {distance} cm")
+            time.sleep(1)
+    except KeyboardInterrupt:
+        sensor.cleanup()
