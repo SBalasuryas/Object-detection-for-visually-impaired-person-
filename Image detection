@@ -1,0 +1,71 @@
+from flask import Flask, Response, render_template
+import cv2
+import numpy as np
+
+app = Flask(__name__)
+
+# Load MobileNet SSD model
+prototxt_path = "models/MobileNetSSD_deploy.prototxt.txt"
+model_path = "models/MobileNetSSD_deploy.caffemodel"
+
+net = cv2.dnn.readNetFromCaffe(prototxt_path, model_path)
+
+# Define class labels
+CLASSES = ["background", "aeroplane", "bicycle", "bird", "boat",
+           "bottle", "bus", "car", "cat", "chair", "cow", "diningtable",
+           "dog", "horse", "motorbike", "person", "pottedplant",
+           "sheep", "sofa", "train", "tvmonitor"]
+
+# Initialize Video Capture
+cap = cv2.VideoCapture(0)
+
+def generate_frames(detect=False):
+    while True:
+        success, frame = cap.read()
+        if not success:
+            break
+        else:
+            if detect:
+                # Prepare frame for detection
+                (h, w) = frame.shape[:2]
+                blob = cv2.dnn.blobFromImage(frame, 0.007843, (300, 300), 127.5)
+                net.setInput(blob)
+                detections = net.forward()
+
+                for i in range(detections.shape[2]):
+                    confidence = detections[0, 0, i, 2]
+                    if confidence > 0.5:  # Detection threshold
+                        idx = int(detections[0, 0, i, 1])
+                        box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+                        (startX, startY, endX, endY) = box.astype("int")
+
+                        label = f"{CLASSES[idx]}: {confidence*100:.2f}%"
+                        cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
+                        cv2.putText(frame, label, (startX, startY - 10),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+            # Encode frame as JPEG
+            _, buffer = cv2.imencode('.jpg', frame)
+            frame = buffer.tobytes()
+            
+            # Yield frame in multipart format
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+@app.route('/')
+def index():
+    """ Main page with links to video streams """
+    return render_template('index.html')
+
+@app.route('/video_feed')
+def video_feed():
+    """ Normal video streaming route """
+    return Response(generate_frames(detect=False), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/detect_objects')
+def detect_objects():
+    """ Object detection video streaming route """
+    return Response(generate_frames(detect=True), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=False)
